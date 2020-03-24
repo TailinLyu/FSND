@@ -3,6 +3,7 @@ from flask import Flask, request, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import random
+import sys
 
 from models import setup_db, Question, Category
 
@@ -95,17 +96,20 @@ def create_app(test_config=None):
     @app.route('/questions/<int:question_id>', methods=['DELETE'])
     def delete_question(question_id):
         question = Question.query.filter_by(id=question_id).one_or_none()
-        if question == None:
+        if question is None:
             abort(404)
-        question.delete()
-        questions = Question.query.all()
-        questions_selection = paginate_questions(request, questions)
-        return jsonify({
-            'success': True,
-            'deleted': question_id,
-            'questions': questions_selection,
-            'total_questions': len(questions)
-        })
+        try:
+          question.delete()
+          questions = Question.query.all()
+          questions_selection = paginate_questions(request, questions)
+          return jsonify({
+              'success': True,
+              'deleted': question_id,
+              'questions': questions_selection,
+              'total_questions': len(questions)
+          }),200
+        except Exception:
+          abort(422)
 
     '''
   @TODO: 
@@ -124,6 +128,8 @@ def create_app(test_config=None):
         new_answer = body['answer']
         new_category = body['category']
         new_difficulty = body['difficulty']
+        if not ((isinstance(new_category, int)) and isinstance(new_difficulty, int)):
+            abort(422)
         try:
             question = Question(
                 new_question,
@@ -141,8 +147,8 @@ def create_app(test_config=None):
                     'total_questions': len(questions),
                     'questions': questions_selection
                 }
-            )
-        except:
+            ),200
+        except Exception:
             abort(422)
 
     '''
@@ -158,7 +164,6 @@ def create_app(test_config=None):
     @app.route('/searchQuestions', methods=['POST'])
     def search_questions():
       search_term = request.get_json()['searchTerm']
-      print(search_term)
       cats = {}
       categories = Category.query.all()
       for cat in categories:
@@ -168,7 +173,6 @@ def create_app(test_config=None):
       questions_selection = paginate_questions(request, search_result)
       for result in search_result:
         current_cats[result.category] = cats[result.category]
-      print(current_cats)
       return jsonify(
         {
           'success': True,
@@ -187,17 +191,19 @@ def create_app(test_config=None):
   category to be shown. '''
     @app.route('/categories/<int:category_id>/questions', methods=['GET'])
     def get_questions_by_category(category_id):
-      questions = Question.query.filter_by(category=category_id).all()
-      questions_selection = paginate_questions(request,questions)
-      current_category = Category.query.filter_by(id=category_id).first().type
-      return jsonify(
-        {
-          'success':True,
-          'questions': questions_selection,
-          'total_questions': len(questions),
-          'current_category': current_category
-        }
-      )
+        if(not isinstance(category_id,int) or category_id < 1 or category_id > 6):
+            abort(404)
+        questions = Question.query.filter_by(category=category_id).all()
+        questions_selection = paginate_questions(request,questions)
+        current_category = Category.query.filter_by(id=category_id).first().type
+        return jsonify(
+            {
+            'success':True,
+            'questions': questions_selection,
+            'total_questions': len(questions),
+            'current_category': current_category
+            }
+        )
       
     '''
   @TODO: 
@@ -224,14 +230,12 @@ def create_app(test_config=None):
       for cat_que in questions_id:
         if not cat_que in previous_questions:
           available_questions.append(cat_que)
-      print('available questions: ', available_questions)
       if(len(available_questions) < 1):
         current_question = None
       else:
         ran_int = random.randint(0,len(available_questions)-1)
         current_question = available_questions[ran_int]
         previous_questions.append(current_question)
-      print('current questions: ',current_question) 
       return jsonify(
         {
           'success': True,
@@ -251,7 +255,10 @@ def create_app(test_config=None):
         "success": False,
         "error": 404,
         "message": "resource not found"
-      })
+      }),404
+
+
+    
     @app.errorhandler(422)
     def unprocessable_entity(error):
       return jsonify(
@@ -260,7 +267,17 @@ def create_app(test_config=None):
           "error": 422,
           "message": "resource is an unprocessable_entity"
         }
-      )
+      ),422
 
+
+    @app.errorhandler(405)
+    def method_not_allowed(error):
+      return jsonify(
+        {
+          "success": False,
+          "error": 405,
+          "message": "Method is not allowed"
+        }
+      ),405
 
     return app
